@@ -1,0 +1,81 @@
+{
+  "model_type": "LightGBM Regressor with Empirical Quantile Prediction Intervals",
+  "target": "dissolved_oxygen_mgl_2h_ahead",
+  "features": [
+    "dissolved_oxygen_mgl",
+    "tan_mgl",
+    "ph",
+    "temperature_c",
+    "calculated_nh3_mgl",
+    "do_lag_1",
+    "do_lag_2",
+    "do_lag_3",
+    "do_lag_6",
+    "do_lag_12",
+    "tan_lag_1",
+    "tan_lag_2",
+    "tan_lag_6",
+    "ph_lag_1",
+    "temp_lag_1",
+    "do_roll_mean_1h",
+    "do_roll_std_1h",
+    "do_roll_min_1h",
+    "do_roll_max_1h",
+    "do_roll_mean_3h",
+    "do_roll_std_3h",
+    "tan_roll_mean_3h",
+    "do_roll_mean_6h",
+    "do_roll_std_6h",
+    "tan_roll_mean_6h",
+    "sin_hour",
+    "cos_hour"
+  ],
+  "n_features": 27,
+  "trained_at": "2026-10-01T11:31:32.901866+00:00",
+  "benchmarks": {
+    "dataset_split": {
+      "total_usable_samples": 5952,
+      "train_samples": 4166,
+      "val_samples": 893,
+      "test_samples": 893,
+      "sampling_interval_minutes": 5,
+      "forecast_horizon_hours": 2.0
+    },
+    "persistence_baseline": {
+      "rmse": 0.4963,
+      "mae": 0.4457,
+      "r2": 0.6989
+    },
+    "diurnal_mean_baseline": {
+      "rmse": 0.1447,
+      "mae": 0.1159,
+      "r2": 0.9744
+    },
+    "lightgbm_regressor": {
+      "rmse": 0.1376,
+      "mae": 0.1092,
+      "r2": 0.9768,
+      "improvement_over_persistence_pct": 72.27
+    },
+    "uncertainty_quantification": {
+      "method": "LightGBM Quantile Regression (alpha=0.05, 0.95)",
+      "nominal_coverage_pct": 90.0,
+      "empirical_coverage_pct": 78.5,
+      "average_interval_width_mgl": 0.403,
+      "residual_std_mgl": 0.1376,
+      "calibration_note": "Nominal 90% interval achieved approximately 78.5% empirical coverage on synthetic test data; further calibration required before interpreting as calibrated 90% prediction intervals."
+    }
+  },
+  "concept_drift_validation": {
+    "delta_confidence_parameter": 0.002,
+    "stationary_detections": 0,
+    "stationary_samples_evaluated": 893,
+    "failure_scenario_drift_detected": true,
+    "detection_evaluated_residual_step": 15,
+    "detection_delay_minutes": 75,
+    "window_mean_at_drift": 2.9649,
+    "threshold_at_drift": 0.8442,
+    "evaluation_observation": "0 drift detections were observed across 893 stationary synthetic test residuals.",
+    "methodological_note": "ADWIN monitors changes in the streaming distribution of true 2-hour forecast residuals. Detection delay is specific to the simulated aerator-failure scenario and experimental parameters."
+  }
+}

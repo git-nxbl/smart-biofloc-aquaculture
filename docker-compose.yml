@@ -1,0 +1,163 @@
+services:
+  # -------------------------------------------------------------
+  # Phase 1: Core Infrastructure
+  # -------------------------------------------------------------
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: aquaculture_mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    networks:
+      - aquaculture_net
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 mosquitto_sub -t '$$SYS/#' -C 1 || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  questdb:
+    image: questdb/questdb:latest
+    container_name: aquaculture_questdb
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # QuestDB Web Console and REST API
+      - "8812:8812"   # PostgreSQL Wire Protocol
+      - "9009:9009"   # Influx Line Protocol (ILP) TCP
+    environment:
+      - QDB_TELEMETRY_ENABLED=false
+      - QDB_PG_USER=admin
+      - QDB_PG_PASSWORD=quest
+    volumes:
+      - questdb_data:/var/lib/questdb
+    networks:
+      - aquaculture_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s 'http://localhost:9000/exec?query=SELECT+1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: aquaculture_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - aquaculture_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Phase 2: Stochastic Data Simulator (Python Ornstein-Uhlenbeck)
+  # -------------------------------------------------------------
+  simulator:
+    build:
+      context: ./simulator
+      dockerfile: Dockerfile
+    image: aquaculture-simulator:latest
+    container_name: aquaculture_simulator
+    restart: unless-stopped
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - MQTT_TOPIC=telemetry/tank/1
+      - PUBLISH_INTERVAL_SEC=5.0
+      - TANK_ID=tank_01
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    networks:
+      - aquaculture_net
+
+  # -------------------------------------------------------------
+  # Phase 3: Backend API & Hardware Ingestion (FastAPI)
+  # -------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: aquaculture-backend:latest
+    container_name: aquaculture_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - QUESTDB_HOST=questdb
+      - QUESTDB_ILP_PORT=9009
+      - QUESTDB_HTTP_PORT=9000
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - REDIS_HOST=redis
+    depends_on:
+      questdb:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aquaculture_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:8000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # Phase 4: Machine Learning Pipeline (LightGBM + ADWIN)
+  # -------------------------------------------------------------
+  ml:
+    build:
+      context: ./ml
+      dockerfile: Dockerfile
+    image: aquaculture-ml:latest
+    container_name: aquaculture_ml
+    volumes:
+      - ./ml/models:/app/ml/models
+      - ./ml/data:/app/ml/data
+      - ./backend/app/models:/app/backend/app/models
+    networks:
+      - aquaculture_net
+
+  # -------------------------------------------------------------
+  # Phase 5: Frontend Real-Time Dashboard (React/Vite/Tailwind)
+  # -------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: aquaculture-frontend:latest
+    container_name: aquaculture_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - aquaculture_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  aquaculture_net:
+    driver: bridge
+
+volumes:
+  mosquitto_data:
+  questdb_data:
+  redis_data:
